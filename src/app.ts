@@ -1,15 +1,16 @@
 require("dotenv").config();
 import { connect } from "mongoose";
 import { Response, Request, NextFunction, Express } from "express";
+import path from "path";
 
 const { PORT = 3001 } = process.env;
 const express = require("express");
-const cors = require("cors");
-// const mongoose = require('mongoose');
-const bodyParser = require("body-parser");
-const helmet = require("helmet");
-const { errors } = require("celebrate");
-const routes = require("./routes/index");
+
+import cors from "cors";
+import bodyParser from "body-parser";
+import helmet from "helmet";
+import { errors } from "celebrate";
+import { routes } from "./routes/index";
 const { login, createUser } = require("./controllers/users");
 const {
   validateCreateUserData,
@@ -17,12 +18,25 @@ const {
 } = require("./middleware/validation");
 const { requestLogger, errorLogger } = require("./middleware/logger");
 
+export const userpicsPath = path.join(__dirname, "userpics");
+
 const app = express();
 app.use(helmet());
-app.use(cors());
+
+const corsOptions: cors.CorsOptions = {
+  origin: "http://localhost:5173",
+};
+
+app.use(cors(corsOptions));
 
 console.log(`The app is runnung in ${process.env.NODE_ENV} mode.`);
 connect("mongodb://127.0.0.1:27017/coach-connection");
+
+app.use("/avatars", (req: Request, res: Response, next: NextFunction) => {
+  res.set("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+});
+app.use("/avatars", express.static(userpicsPath));
 
 app.use(bodyParser.json());
 app.use("/", routes);
@@ -30,7 +44,7 @@ app.use("/", routes);
 app.use(requestLogger);
 
 app.post("/signin", validateLoginData, login);
-// app.post("/signup", createUser);
+// app.get("/signup", createUser);
 app.post("/signup", validateCreateUserData, createUser);
 app.use("/", routes);
 

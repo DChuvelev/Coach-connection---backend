@@ -8,6 +8,6 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/controllers/clients.ts.old", "src/models/coaches.ts.old", "src/models/clients.ts.old", "src/models/coaches.js", "src/models/clients.js"],
   "exclude": ["node_modules"]
 }

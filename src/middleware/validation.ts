@@ -1,17 +1,12 @@
-const { Joi, celebrate } = require("celebrate");
-const validator = require("validator");
+import { celebrate, Joi } from "celebrate";
+import { NextFunction, Request, Response } from "express";
+import validator from "validator";
 
-const validateUrl = (value, helpers) => {
-  console.log(value);
-  if (validator.isURL(value)) {
-    console.log("URL VALIDATION - success!!!");
-    return value;
-  }
-  console.log("URL VALIDATION - fail!!!");
-  return helpers.error("string.uri");
-};
-
-module.exports.validateCreateUserData = (req, res, next) => {
+export const validateCreateUserData = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   celebrate({
     body: Joi.object()
       .keys({
@@ -31,19 +26,29 @@ module.exports.validateCreateUserData = (req, res, next) => {
   })(req, res, next);
 };
 
-module.exports.validateModifyUserData = (req, res, next) => {
+export const validateModifyUserData = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   celebrate({
-    body: Joi.object().keys({
-      name: Joi.string().required().min(2).max(30).messages({
-        "string.min": "Name should be at least 2 characters long",
-        "string.max": "Name should be no longer then 30 characters",
-        "string.empty": "The 'Name' field is empty",
-      }),
-    }),
+    body: Joi.object()
+      .keys({
+        name: Joi.string().required().min(2).max(30).messages({
+          "string.min": "Name should be at least 2 characters long",
+          "string.max": "Name should be no longer then 30 characters",
+          "string.empty": "The 'Name' field is empty",
+        }),
+      })
+      .unknown(true),
   })(req, res, next);
 };
 
-module.exports.validateLoginData = (req, res, next) => {
+export const validateLoginData = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   celebrate({
     body: Joi.object()
       .keys({
@@ -58,7 +63,7 @@ module.exports.validateLoginData = (req, res, next) => {
   })(req, res, next);
 };
 
-module.exports.validateId = (req, res, next) => {
+export const validateId = (req: Request, res: Response, next: NextFunction) => {
   console.log(req.params);
   celebrate({
     params: Joi.object().keys({

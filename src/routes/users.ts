@@ -1,12 +1,16 @@
-const router = require('express').Router();
-const fileUpload = require('express-fileupload');
-const {getCurrentUser, modifyCurrentUserData} = require('../controllers/users');
-const { validateModifyUserData } = require('../middleware/validation');
+import { Router } from "express";
+export const usersRouter = Router();
 
-router.use(fileUpload());
-router.get('/me', getCurrentUser);
-router.patch('/me', validateModifyUserData, modifyCurrentUserData);
-router.post('/me', (req, res => {
-    console.log(req.files);
-}))
-module.exports = router;
+import {
+  generateRandomCoach,
+  getAllCoaches,
+  getCurrentUser,
+  modifyCurrentUserData,
+} from "../controllers/users";
+import { validateModifyUserData } from "../middleware/validation";
+import { auth } from "../middleware/auth";
+
+usersRouter.get("/me", auth, getCurrentUser);
+usersRouter.patch("/me", auth, validateModifyUserData, modifyCurrentUserData);
+usersRouter.get("/coaches", getAllCoaches);
+usersRouter.get("/coaches/create/random", generateRandomCoach);
