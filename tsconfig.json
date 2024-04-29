@@ -8,6 +8,16 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts", "src/controllers/clients.ts.old", "src/models/coaches.ts.old", "src/models/clients.ts.old", "src/models/coaches.js", "src/models/clients.js"],
-  "exclude": ["node_modules"]
+  "include": [
+    "src/**/*.ts",
+    "src/controllers/clients.ts.old",
+    "src/models/coaches.ts.old",
+    "src/models/clients.ts.old",
+    "src/models/coaches.js",
+    "src/models/clients.js",
+    "src/models/users.temp",
+    "src/models/chats.ts.temp",
+    "src/models/baseUser.old"
+  ],
+  "exclude": ["node_modules", "*.temp"]
 }

@@ -1,11 +1,12 @@
-import { Response, Request, NextFunction, Express } from "express";
-import { Document, Model } from "mongoose";
-import { User, findUserByCredentials } from "../models/users";
+import { Response, Request, NextFunction } from "express";
+import { Model } from "mongoose";
+import { findUserByCredentials } from "../models/baseUser";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 // const faker = require("faker");
 import { faker } from "@faker-js/faker";
-import { Client, Coach } from "../models/users";
+import { ClientModel } from "../models/client";
+import { CoachModel, ICoach } from "../models/coach";
 import {
   BadRequestError,
   ConflictError,
@@ -13,7 +14,7 @@ import {
   NotFoundError,
 } from "../utils/errors/errorClasses";
 import { ReqWithUserAndFileInfo, ReqWithUserInfo } from "../appTypes";
-import { clientModel, coachModel } from "../models/users";
+import { AdminModel } from "../models/admin";
 const { JWT_SECRET } = require("../utils/config");
 
 const userPrivateInfoToSend = (user: any) => {
@@ -36,13 +37,16 @@ export const getCurrentUser = (
   let currentModel: Model<any>;
   switch (req.user.role) {
     case "client":
-      currentModel = clientModel;
+      currentModel = ClientModel;
       break;
     case "coach":
-      currentModel = coachModel;
+      currentModel = CoachModel;
+      break;
+    case "admin":
+      currentModel = AdminModel;
       break;
     default:
-      currentModel = clientModel;
+      currentModel = ClientModel;
   }
 
   console.log("Get user by token", req.user._id, req.user.role);
@@ -74,11 +78,16 @@ export const createUser = (req: Request, res: Response, next: NextFunction) => {
   let currentModel: Model<any>;
   switch (req.body.role) {
     case "client":
-      currentModel = clientModel;
+      currentModel = ClientModel;
       break;
     case "coach":
-      currentModel = coachModel;
+      currentModel = CoachModel;
       break;
+    case "admin":
+      currentModel = AdminModel;
+      break;
+    default:
+      currentModel = ClientModel;
   }
 
   bcrypt
@@ -111,13 +120,16 @@ export const login = (req: Request, res: Response, next: NextFunction) => {
   let currentModel: Model<any>;
   switch (req.body.role) {
     case "client":
-      currentModel = clientModel;
+      currentModel = ClientModel;
       break;
     case "coach":
-      currentModel = coachModel;
+      currentModel = CoachModel;
+      break;
+    case "admin":
+      currentModel = AdminModel;
       break;
     default:
-      currentModel = clientModel;
+      currentModel = ClientModel;
   }
 
   findUserByCredentials(req.body.email, req.body.password, currentModel)
@@ -155,13 +167,16 @@ export const setUserpic = (
   let currentModel: Model<any>;
   switch (req.user.role) {
     case "client":
-      currentModel = clientModel;
+      currentModel = ClientModel;
       break;
     case "coach":
-      currentModel = coachModel;
+      currentModel = CoachModel;
+      break;
+    case "admin":
+      currentModel = AdminModel;
       break;
     default:
-      currentModel = clientModel;
+      currentModel = ClientModel;
   }
 
   const avatar = req.file.filename;
@@ -199,13 +214,16 @@ export const modifyCurrentUserData = (
   let currentModel: Model<any>;
   switch (req.user.role) {
     case "client":
-      currentModel = clientModel;
+      currentModel = ClientModel;
       break;
     case "coach":
-      currentModel = coachModel;
+      currentModel = CoachModel;
+      break;
+    case "admin":
+      currentModel = AdminModel;
       break;
     default:
-      currentModel = clientModel;
+      currentModel = ClientModel;
   }
 
   const { _id, __v, email, role, avatar, ...updatedInfo } = req.body;
@@ -240,10 +258,9 @@ export const getAllCoaches = (
 ) => {
   const req = reqOrigin as ReqWithUserInfo;
 
-  coachModel
-    .find({})
+  CoachModel.find({})
     .then((foundDoc: unknown) => {
-      const coachesFullInfo = foundDoc as Array<{ _doc: Coach }>;
+      const coachesFullInfo = foundDoc as Array<{ _doc: ICoach }>;
       console.log("Get all items");
       const coachesToSend = coachesFullInfo
         .filter((coach) => coach._doc.status === "active")
@@ -362,7 +379,7 @@ export const generateRandomCoach = (
 
   const addCoachToDB = async () => {
     const hash = await bcrypt.hash("easyone", 10);
-    const createdUser = await coachModel.create({
+    const createdUser = await CoachModel.create({
       ...generateCoach(),
       password: hash,
     });
