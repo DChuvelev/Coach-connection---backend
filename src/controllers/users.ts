@@ -1,6 +1,6 @@
 import { Response, Request, NextFunction } from "express";
 import { Model } from "mongoose";
-import { findUserByCredentials } from "../models/baseUser";
+import { IUser, UserModel, findUserByCredentials } from "../models/baseUser";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 // const faker = require("faker");
@@ -34,24 +34,16 @@ export const getCurrentUser = (
 ) => {
   const req = reqOrig as ReqWithUserInfo;
 
-  let currentModel: Model<any>;
-  switch (req.user.role) {
-    case "client":
-      currentModel = ClientModel;
-      break;
-    case "coach":
-      currentModel = CoachModel;
-      break;
-    case "admin":
-      currentModel = AdminModel;
-      break;
-    default:
-      currentModel = ClientModel;
-  }
-
   console.log("Get user by token", req.user._id, req.user.role);
-  currentModel
-    .findById(req.user._id)
+  UserModel.findById(req.user._id)
+    .populate({
+      path: "chats",
+      select: "_id",
+      populate: {
+        path: "members",
+        select: "_id name role",
+      },
+    })
     .orFail()
     .then((user: any) => {
       res.send(userPrivateInfoToSend(user));
@@ -75,26 +67,24 @@ export const createUser = (req: Request, res: Response, next: NextFunction) => {
   console.log("User creation request:");
   console.dir(req.body);
 
-  let currentModel: Model<any>;
-  switch (req.body.role) {
-    case "client":
-      currentModel = ClientModel;
-      break;
-    case "coach":
-      currentModel = CoachModel;
-      break;
-    case "admin":
-      currentModel = AdminModel;
-      break;
-    default:
-      currentModel = ClientModel;
-  }
+  // let currentModel: Model<any>;
+  // switch (req.body.role) {
+  //   case "client":
+  //     currentModel = ClientModel;
+  //     break;
+  //   case "coach":
+  //     currentModel = CoachModel;
+  //     break;
+  //   case "admin":
+  //     currentModel = AdminModel;
+  //     break;
+  //   default:
+  //     currentModel = ClientModel;
+  // }
 
   bcrypt
     .hash(req.body.password, 10)
-    .then((hash: string) =>
-      currentModel.create({ ...req.body, password: hash })
-    )
+    .then((hash: string) => UserModel.create({ ...req.body, password: hash }))
     .then((user: any) => {
       res.send(userPrivateInfoToSend(user));
       console.log(`User created: ${user}`);
@@ -113,48 +103,69 @@ export const createUser = (req: Request, res: Response, next: NextFunction) => {
     });
 };
 
-export const login = (req: Request, res: Response, next: NextFunction) => {
+export const login = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   console.log("Login");
   console.dir(req.body);
+  try {
+    let currentModel: Model<any>;
+    switch (req.body.role) {
+      case "client":
+        currentModel = ClientModel;
+        break;
+      case "coach":
+        currentModel = CoachModel;
+        break;
+      case "admin":
+        currentModel = AdminModel;
+        break;
+      default:
+        currentModel = ClientModel;
+    }
+    const user = currentModel
+      .findById(
+        (
+          (await findUserByCredentials(
+            req.body.email,
+            req.body.password,
+            currentModel
+          )) as IUser
+        )._id
+      )
+      .populate({
+        path: "chats",
+        select: "_id",
+        populate: {
+          path: "members",
+          select: "_id name role",
+        },
+      })
 
-  let currentModel: Model<any>;
-  switch (req.body.role) {
-    case "client":
-      currentModel = ClientModel;
-      break;
-    case "coach":
-      currentModel = CoachModel;
-      break;
-    case "admin":
-      currentModel = AdminModel;
-      break;
-    default:
-      currentModel = ClientModel;
+      .then((user: any) => {
+        console.log("Successful user login:", user.name);
+        const token = jwt.sign({ _id: user._id, role: user.role }, JWT_SECRET, {
+          expiresIn: "7d",
+        });
+        res.send({
+          token,
+          ...userPrivateInfoToSend(user),
+        });
+      });
+  } catch (err: any) {
+    console.error("Error:", err.message);
+    if (err.message === "Incorrect username or password") {
+      next(new UnauthorizedError(err.message));
+      return;
+    }
+    if (err.message === "Invalid data") {
+      next(new BadRequestError(err.message));
+      return;
+    }
+    next(err);
   }
-
-  findUserByCredentials(req.body.email, req.body.password, currentModel)
-    .then((user: any) => {
-      console.log("Successful user login:", user.name);
-      const token = jwt.sign({ _id: user._id, role: user.role }, JWT_SECRET, {
-        expiresIn: "7d",
-      });
-      res.send({
-        token,
-        ...userPrivateInfoToSend(user),
-      });
-    })
-    .catch((err: any) => {
-      console.error("Error:", err.message);
-      if (err.message === "Incorrect username or password") {
-        next(new UnauthorizedError(err.message));
-        return;
-      }
-      if (err.message === "Invalid data") {
-        next(new BadRequestError(err.message));
-        return;
-      }
-      next(err);
-    });
 };
 
 export const setUserpic = (
@@ -164,28 +175,12 @@ export const setUserpic = (
 ) => {
   const req = reqOrig as ReqWithUserAndFileInfo;
 
-  let currentModel: Model<any>;
-  switch (req.user.role) {
-    case "client":
-      currentModel = ClientModel;
-      break;
-    case "coach":
-      currentModel = CoachModel;
-      break;
-    case "admin":
-      currentModel = AdminModel;
-      break;
-    default:
-      currentModel = ClientModel;
-  }
-
   const avatar = req.file.filename;
-  currentModel
-    .findByIdAndUpdate(
-      req.user._id,
-      { avatar },
-      { new: true, runValidators: true }
-    )
+  UserModel.findByIdAndUpdate(
+    req.user._id,
+    { avatar },
+    { new: true, runValidators: true }
+  )
     .then((user: any) => {
       res.send(userPrivateInfoToSend(user));
       console.log(`User ${user.name} modified`);
@@ -204,51 +199,44 @@ export const setUserpic = (
     });
 };
 
-export const modifyCurrentUserData = (
+export const modifyCurrentUserData = async (
   reqOrig: Request,
   res: Response,
   next: NextFunction
 ) => {
   const req = reqOrig as ReqWithUserAndFileInfo;
 
-  let currentModel: Model<any>;
-  switch (req.user.role) {
-    case "client":
-      currentModel = ClientModel;
-      break;
-    case "coach":
-      currentModel = CoachModel;
-      break;
-    case "admin":
-      currentModel = AdminModel;
-      break;
-    default:
-      currentModel = ClientModel;
-  }
-
   const { _id, __v, email, role, avatar, ...updatedInfo } = req.body;
   console.dir(updatedInfo);
-  currentModel
-    .findByIdAndUpdate(req.user._id, updatedInfo, {
+  try {
+    const user = await UserModel.findByIdAndUpdate(req.user._id, updatedInfo, {
       new: true,
       runValidators: true,
     })
-    .then((user: any) => {
-      res.send(userPrivateInfoToSend(user));
-      console.log(`User ${user.name} modified`);
-    })
-    .catch((err) => {
-      console.error(err.name);
-      if (err.name === "DocumentNotFoundError") {
-        next(new NotFoundError(`There's no user with id: ${req.user._id}`));
-        return;
-      }
-      if (err.name === "ValidationError") {
-        next(new BadRequestError("Invalid data"));
-        return;
-      }
-      next(err);
-    });
+      .populate({
+        path: "chats",
+        select: "_id",
+        populate: {
+          path: "members",
+          select: "_id name role",
+        },
+      })
+      .orFail();
+
+    res.send(userPrivateInfoToSend(user));
+    console.log(`User ${user.name} modified`);
+  } catch (err: any) {
+    console.error(err.name);
+    if (err.name === "DocumentNotFoundError") {
+      next(new NotFoundError(`There's no user with id: ${req.user._id}`));
+      return;
+    }
+    if (err.name === "ValidationError") {
+      next(new BadRequestError("Invalid data"));
+      return;
+    }
+    next(err);
+  }
 };
 
 export const getAllCoaches = (
@@ -272,6 +260,8 @@ export const getAllCoaches = (
       next(err);
     });
 };
+
+// ------------------ temporary ----------------------------
 
 export const generateRandomCoach = (
   reqOrigin: Request,

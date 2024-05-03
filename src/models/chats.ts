@@ -1,22 +1,19 @@
-import mongoose, { Schema, model } from "mongoose";
-import { Roles } from "./baseUser";
+import mongoose, { Schema, model, Types } from "mongoose";
+import { IUser, Roles } from "./baseUser";
 
 export interface IMessage {
-  _id: Schema.Types.ObjectId;
+  _id: Types.ObjectId;
   text: string;
   timestamp: string;
-  author: Schema.Types.ObjectId;
-}
-
-export interface IChatMember {
-  memberId: Schema.Types.ObjectId;
-  role: Roles;
+  authorId: Types.ObjectId;
+  edited: boolean;
+  fromChatId: Types.ObjectId;
 }
 
 export interface IChat {
-  _id: Schema.Types.ObjectId;
+  _id: Types.ObjectId;
   messages: IMessage[];
-  members: IChatMember[];
+  members: (Types.ObjectId | IUser)[];
 }
 
 const messageSchema = new Schema<IMessage>({
@@ -29,32 +26,35 @@ const messageSchema = new Schema<IMessage>({
   timestamp: {
     type: String,
   },
-  author: {
+  authorId: {
     type: Schema.Types.ObjectId,
     ref: "user",
     required: true,
   },
+  edited: {
+    type: Boolean,
+    default: false,
+  },
+  fromChatId: {
+    type: Schema.Types.ObjectId,
+    ref: "chat",
+  },
 });
 
-export const chatMemberSchema = new Schema<IChatMember>(
-  {
-    memberId: {
-      type: Schema.Types.ObjectId,
-      required: true,
+export const chatSchema = new Schema<IChat>({
+  messages: [
+    {
+      type: Types.ObjectId,
+      ref: "chatMessage",
+    },
+  ],
+  members: [
+    {
+      type: Types.ObjectId,
       ref: "user",
     },
-    role: {
-      type: String,
-      enum: Roles,
-      required: true,
-    },
-  },
-  { _id: false }
-);
-
-export const chatSchema = new Schema<IChat>({
-  messages: [messageSchema],
-  members: [chatMemberSchema],
+  ],
 });
 
 export const ChatModel = model<IChat>("chat", chatSchema);
+export const MessageModel = model<IMessage>("chatMessage", messageSchema);

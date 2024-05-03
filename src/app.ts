@@ -11,6 +11,15 @@ import bodyParser from "body-parser";
 import helmet from "helmet";
 import { errors } from "celebrate";
 import { routes } from "./routes/index";
+import { createServer, Server } from "http";
+import session from "express-session";
+import initializeWebsocketServer from "./utils/websocket/websocket";
+declare module "express" {
+  interface Request {
+    session: session.Session & Partial<session.SessionData>;
+  }
+}
+
 const { login, createUser } = require("./controllers/users");
 const {
   validateCreateUserData,
@@ -21,9 +30,10 @@ const { requestLogger, errorLogger } = require("./middleware/logger");
 export const userpicsPath = path.join(__dirname, "userpics");
 
 const app = express();
+
 app.use(helmet());
 
-const corsOptions: cors.CorsOptions = {
+export const corsOptions: cors.CorsOptions = {
   origin: "http://localhost:5173",
 };
 
@@ -60,6 +70,8 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   });
 });
 
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`App listening to port ${PORT}`);
 });
+
+initializeWebsocketServer(httpServer);

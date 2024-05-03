@@ -1,8 +1,8 @@
 import { Request } from "express";
-import { Schema } from "mongoose";
+import { Schema, Types } from "mongoose";
 import { Roles } from "./models/baseUser";
 export interface TokenUserInfo {
-  _id: Schema.Types.ObjectId;
+  _id: Types.ObjectId;
   role: Roles;
 }
 export interface ReqWithUserInfo extends Request {

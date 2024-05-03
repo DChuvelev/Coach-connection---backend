@@ -1,7 +1,6 @@
-import mongoose, { Model, Schema, model } from "mongoose";
+import mongoose, { Model, Schema, model, Types } from "mongoose";
 import validator from "validator";
 import bcrypt from "bcryptjs";
-import { IChat, IChatMember, chatMemberSchema, chatSchema } from "./chats";
 
 export enum Roles {
   Coach = "coach",
@@ -10,21 +9,18 @@ export enum Roles {
 }
 
 export interface IUser {
-  _id: Schema.Types.ObjectId;
-  name: string;
-  email: string;
-  password: string;
-  avatar: string;
-  role: Roles;
-  gender: string;
-  languages: string[];
-  birthDate: string;
-  about: string;
-  chats: {
-    chatId: Schema.Types.ObjectId;
-    members: IChatMember[];
-  }[];
-  gotNewMessagesInChatIDs: Schema.Types.ObjectId[];
+  _id: Types.ObjectId;
+  name?: string;
+  email?: string;
+  password?: string;
+  avatar?: string;
+  role?: Roles;
+  gender?: string;
+  languages?: string[];
+  birthDate?: string;
+  about?: string;
+  chats?: Types.ObjectId[];
+  gotNewMessagesInChatIDs?: Types.ObjectId[];
 }
 
 const baseUserSchema = new Schema<IUser>(
@@ -77,18 +73,16 @@ const baseUserSchema = new Schema<IUser>(
     },
     chats: [
       {
-        chatId: {
-          type: Schema.Types.ObjectId,
-          required: true,
-          _id: false,
-        },
-        members: [chatMemberSchema],
-        _id: false,
+        type: Types.ObjectId,
+        required: true,
+        ref: "chat",
       },
     ],
     gotNewMessagesInChatIDs: [
       {
-        type: Schema.Types.ObjectId,
+        type: Types.ObjectId,
+        ref: "chat",
+        required: true,
       },
     ],
   },

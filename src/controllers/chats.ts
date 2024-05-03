@@ -1,8 +1,9 @@
 import { Response, Request, NextFunction } from "express";
-import { ChatModel, IChat, IMessage } from "../models/chats";
+import { ChatModel, IChat, IMessage, MessageModel } from "../models/chats";
 import { ReqWithUserInfo } from "../appTypes";
-import { Roles, UserModel } from "../models/baseUser";
-import mongoose, { Schema } from "mongoose";
+import { IUser, Roles, UserModel } from "../models/baseUser";
+import mongoose, { Schema, Types } from "mongoose";
+import { socketUsersRecord } from "../utils/websocket/websocket";
 
 export const getChatByID = (
   reqOrig: Request,
@@ -31,6 +32,35 @@ export const getChatByID = (
   //     next(err);
 };
 
+export const checkChat = async (
+  reqOrig: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const req = reqOrig as ReqWithUserInfo;
+  try {
+    const chat = await ChatModel.exists({ _id: req.params.chatId });
+    if (chat === null) {
+      //that means that the chat does not exist for some reason and we have to reconstruct it
+      const memberIds: Types.ObjectId[] = req.body.members;
+      const members: IUser[] = [];
+      for (const memberId of memberIds) {
+        const member = await UserModel.findById(memberId).orFail();
+        if (member) members.push(member?._id);
+      }
+      await ChatModel.create({
+        _id: req.params.chatId,
+        messages: [],
+        members: members,
+      });
+    }
+    res.sendStatus(200);
+  } catch (err) {
+    console.log(err);
+    next(err);
+  }
+};
+
 export const createChat = async (
   reqOrig: Request,
   res: Response,
@@ -42,41 +72,28 @@ export const createChat = async (
     const firstMember = await UserModel.findById(req.user._id).orFail();
     const secondMember = await UserModel.findById(req.params.userId).orFail();
     const newChat: IChat = {
-      _id: new mongoose.Types.ObjectId() as unknown as Schema.Types.ObjectId,
+      _id: new Types.ObjectId(),
       messages: [],
       members: [
         {
-          memberId: req.user._id,
-          role: req.user.role,
+          _id: firstMember._id,
+          role: firstMember.role,
+          name: firstMember.name,
         },
         {
-          memberId: secondMember?._id as unknown as Schema.Types.ObjectId,
-          role: secondMember?.role as Roles,
+          _id: secondMember?._id,
+          role: secondMember?.role,
+          name: secondMember.name,
         },
       ],
     };
+    // to the ChatModel we save a chat with both members
+    // to the User model we save chat with just chat partner as a member of a chat.
     const newCreatedChat: IChat = await ChatModel.create(newChat);
-    firstMember.chats.push({
-      chatId: newCreatedChat._id,
-      members: [
-        {
-          memberId: secondMember?._id as unknown as Schema.Types.ObjectId,
-          role: secondMember?.role as Roles,
-        },
-      ],
-    });
+    firstMember.chats?.push(newCreatedChat._id);
 
     await firstMember.save();
-    secondMember.chats.push({
-      chatId: newCreatedChat._id,
-      members: [
-        {
-          memberId: req.user._id,
-          role: req.user.role,
-        },
-      ],
-    });
-    secondMember.gotNewMessagesInChatIDs.push(newCreatedChat._id);
+    secondMember.chats?.push(newCreatedChat._id);
     await secondMember.save();
     console.log(`Chat with id:${newCreatedChat._id} created`);
     res.send(newCreatedChat._id);
@@ -106,21 +123,63 @@ export const refreshChat = async (
   } catch {
     lastMessageId = undefined;
   }
-  console.log(chatId, lastMessageId);
+  // console.log(chatId, lastMessageId);
 
   try {
-    const chat = await ChatModel.findById(chatId);
+    const chat = await ChatModel.findById(chatId)
+      .populate(
+        // path: "chats",
+        // select: "_id",
+        [
+          {
+            path: "members",
+            select: "_id name role",
+          },
+          {
+            path: "messages",
+          },
+        ]
+      )
+      .orFail();
+
     console.log("Before sorting", chat?.messages);
+    console.log(chat);
 
     if (lastMessageId && chat) {
       let startIndex = chat.messages.findIndex((message: IMessage) =>
         lastMessageId.equals(message._id as unknown as string)
-      );
+      ); //Finding the index of the lastMessage if provided
+
       if (startIndex !== -1) {
         chat.messages = chat.messages.slice(startIndex + 1);
-      }
+      } //Sorting only the messages that appeared after the lastMessage
     }
     console.log("After sorting", chat?.messages);
+
+    //Now we need to remove this chat from the list of the chats with new messages
+    //for the current user, as the chat is refreshed and all messages should be received.
+    const currentUser = await UserModel.findById(req.user._id).orFail();
+    // console.log(currentUser?.gotNewMessagesInChatIDs);
+    let thisChatIndexInNewMessages;
+    if (chatId)
+      thisChatIndexInNewMessages =
+        currentUser?.gotNewMessagesInChatIDs?.findIndex((checkedId) =>
+          chatId.equals(checkedId as unknown as string)
+        );
+    console.log(thisChatIndexInNewMessages);
+    if (
+      thisChatIndexInNewMessages !== undefined &&
+      thisChatIndexInNewMessages !== -1
+    ) {
+      // console.log("Removing!");
+      currentUser?.gotNewMessagesInChatIDs?.splice(
+        thisChatIndexInNewMessages,
+        1
+      );
+    }
+    console.log(currentUser?.gotNewMessagesInChatIDs);
+    await currentUser?.save();
+
     res.send(chat ? chat : {});
   } catch (error) {
     console.error("Error refreshing chat:", error);
@@ -137,24 +196,28 @@ export const addMessage = async (
     const req = reqOrig as ReqWithUserInfo;
     const {
       chatId,
-      author,
+      authorId,
       text,
     }: {
-      chatId: Schema.Types.ObjectId;
-      author: Schema.Types.ObjectId;
+      chatId: Types.ObjectId;
+      authorId: Types.ObjectId;
       text: string;
     } = req.body;
 
-    const newMessage: IMessage = {
-      _id: new mongoose.Types.ObjectId() as unknown as Schema.Types.ObjectId,
+    const newCreatedMessage = await MessageModel.create({
+      _id: new Types.ObjectId(),
       text: text,
       timestamp: new Date().toISOString(),
-      author: author,
-    };
+      authorId: authorId,
+      edited: false,
+      fromChatId: chatId,
+    });
+
+    // console.log(newMessage);
 
     const updatedChat = await ChatModel.findOneAndUpdate(
       { _id: chatId },
-      { $push: { messages: newMessage } },
+      { $push: { messages: newCreatedMessage._id } },
       { new: true }
     );
 
@@ -162,7 +225,45 @@ export const addMessage = async (
       throw new Error("Chat not found");
     }
 
-    res.send(newMessage._id);
+    // Now we look for the chat members to update their new message info
+    const memberPromises = updatedChat.members.map((member) => {
+      return UserModel.findById(member._id).orFail();
+    });
+
+    const memberArray = await Promise.all(memberPromises);
+
+    // and adding this chat to their list of chats with new messages.
+
+    memberArray.forEach((member) => {
+      if (
+        member?.gotNewMessagesInChatIDs?.findIndex((checkedId) =>
+          checkedId.equals(updatedChat._id as unknown as string)
+        ) === -1
+      ) {
+        //we need to check if the chat is not already there to avoid duplication
+        member?.gotNewMessagesInChatIDs.push(updatedChat._id);
+      }
+    });
+
+    await Promise.all(memberArray.map((member) => member?.save()));
+
+    //and the last step is to inform them all through websockets that they got a new message
+
+    memberArray.forEach((member) => {
+      for (const token in socketUsersRecord) {
+        if (
+          member?._id.equals(
+            socketUsersRecord[token].userId as unknown as string
+          )
+        ) {
+          socketUsersRecord[token].socket.emit("new_message_in_chat", {
+            chatId: chatId,
+          });
+        }
+      }
+    });
+
+    res.send(newCreatedMessage._id);
   } catch (error) {
     console.error("Error adding message:", error);
     next(error);
