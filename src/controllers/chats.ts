@@ -4,6 +4,7 @@ import { ReqWithUserInfo } from "../appTypes";
 import { IUser, Roles, UserModel } from "../models/baseUser";
 import mongoose, { Schema, Types } from "mongoose";
 import { socketUsersRecord } from "../utils/websocket/websocket";
+import { timeStamp } from "console";
 
 export const getChatByID = (
   reqOrig: Request,
@@ -142,8 +143,8 @@ export const refreshChat = async (
       )
       .orFail();
 
-    console.log("Before sorting", chat?.messages);
-    console.log(chat);
+    // console.log("Before sorting", chat?.messages);
+    // console.log(chat);
 
     if (lastMessageId && chat) {
       let startIndex = chat.messages.findIndex((message: IMessage) =>
@@ -154,7 +155,7 @@ export const refreshChat = async (
         chat.messages = chat.messages.slice(startIndex + 1);
       } //Sorting only the messages that appeared after the lastMessage
     }
-    console.log("After sorting", chat?.messages);
+    // console.log("After sorting", chat?.messages);
 
     //Now we need to remove this chat from the list of the chats with new messages
     //for the current user, as the chat is refreshed and all messages should be received.
@@ -166,7 +167,7 @@ export const refreshChat = async (
         currentUser?.gotNewMessagesInChatIDs?.findIndex((checkedId) =>
           chatId.equals(checkedId as unknown as string)
         );
-    console.log(thisChatIndexInNewMessages);
+    // console.log(thisChatIndexInNewMessages);
     if (
       thisChatIndexInNewMessages !== undefined &&
       thisChatIndexInNewMessages !== -1
@@ -177,7 +178,7 @@ export const refreshChat = async (
         1
       );
     }
-    console.log(currentUser?.gotNewMessagesInChatIDs);
+    // console.log(currentUser?.gotNewMessagesInChatIDs);
     await currentUser?.save();
 
     res.send(chat ? chat : {});
@@ -217,7 +218,10 @@ export const addMessage = async (
 
     const updatedChat = await ChatModel.findOneAndUpdate(
       { _id: chatId },
-      { $push: { messages: newCreatedMessage._id } },
+      {
+        $push: { messages: newCreatedMessage._id },
+        $set: { lastMessage: newCreatedMessage._id },
+      },
       { new: true }
     );
 
@@ -227,7 +231,13 @@ export const addMessage = async (
 
     // Now we look for the chat members to update their new message info
     const memberPromises = updatedChat.members.map((member) => {
-      return UserModel.findById(member._id).orFail();
+      return UserModel.findById(member._id)
+        .populate({
+          //we should populate lastMessage for sorting purposes
+          path: "chats",
+          select: "lastMessage",
+        })
+        .orFail();
     });
 
     const memberArray = await Promise.all(memberPromises);
@@ -243,12 +253,28 @@ export const addMessage = async (
         //we need to check if the chat is not already there to avoid duplication
         member?.gotNewMessagesInChatIDs.push(updatedChat._id);
       }
+
+      //we also need to sort each user chats list by the timestamp of the last message
+      if (member.chats && member.chats.length > 1) {
+        member.chats?.sort((a, b) => {
+          const chatA = a as unknown as IChat;
+          const chatALastMessageDate = (
+            a as unknown as IChat
+          ).lastMessage?.getTimestamp();
+          const chatBLastMessageDate = (
+            b as unknown as IChat
+          ).lastMessage?.getTimestamp();
+          if (!chatALastMessageDate || !chatBLastMessageDate) return 0;
+          if (chatALastMessageDate === chatBLastMessageDate) return 0;
+          return chatALastMessageDate > chatBLastMessageDate ? -1 : 1;
+        });
+      }
     });
 
     await Promise.all(memberArray.map((member) => member?.save()));
 
     //and the last step is to inform them all through websockets that they got a new message
-
+    //we don't send message itself, we just need to send the chatId and timestamp for sorting purposes
     memberArray.forEach((member) => {
       for (const token in socketUsersRecord) {
         if (
@@ -256,14 +282,40 @@ export const addMessage = async (
             socketUsersRecord[token].userId as unknown as string
           )
         ) {
+          console.log(`Sending isocket message to user ${member._id}`);
           socketUsersRecord[token].socket.emit("new_message_in_chat", {
             chatId: chatId,
+            messageId: newCreatedMessage._id,
+            timestamp: newCreatedMessage.timestamp,
           });
         }
       }
     });
 
     res.send(newCreatedMessage._id);
+  } catch (error) {
+    console.error("Error adding message:", error);
+    next(error);
+  }
+};
+
+export const deleteChat = async (
+  reqOrig: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const req = reqOrig as ReqWithUserInfo;
+    const chatId = req.params.chatId as unknown as Types.ObjectId;
+    console.log(`Deleteing chat with id ${chatId}`);
+    const result = await ChatModel.deleteOne({ _id: chatId });
+    console.log(result);
+    if (result.deletedCount === 1) {
+      console.log("Successfully deleted one document.");
+    } else {
+      console.log("No documents matched the query. Deleted 0 documents.");
+    }
+    res.send(result);
   } catch (error) {
     console.error("Error adding message:", error);
     next(error);

@@ -2,6 +2,7 @@ import { Server, Socket } from "socket.io";
 import { createServer, Server as HttpServer } from "http";
 import { corsOptions } from "../../app";
 import { Types } from "mongoose";
+import cors from "cors";
 
 export interface SocketsUserInfo {
   socket: Socket;
@@ -22,6 +23,7 @@ export const initializeWebsocketServer = (httpServer: HttpServer) => {
 
   io.on("connection", (socket) => {
     socket.on("log_in", (data: SocketsLoginInfo) => {
+      console.log(`New socket connection, socket: ${socket.id}`);
       // console.log(`We got a new websocket connection: ${data}`);
       socketUsersRecord[data.token] = {
         socket: socket,

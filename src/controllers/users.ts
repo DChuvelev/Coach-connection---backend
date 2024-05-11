@@ -15,7 +15,23 @@ import {
 } from "../utils/errors/errorClasses";
 import { ReqWithUserAndFileInfo, ReqWithUserInfo } from "../appTypes";
 import { AdminModel } from "../models/admin";
+import { populate } from "dotenv";
 const { JWT_SECRET } = require("../utils/config");
+
+export const chatsPopulatedInfo = {
+  path: "chats",
+  select: "_id",
+  populate: [
+    {
+      path: "members",
+      select: "_id name role",
+    },
+    {
+      path: "lastMessage",
+      select: "timestamp",
+    },
+  ],
+};
 
 const userPrivateInfoToSend = (user: any) => {
   const { __v, password, ...privateInfoToSend } = user._doc;
@@ -27,7 +43,7 @@ const userPublicInfoToSend = (user: any) => {
   return publicInfoToSend;
 };
 
-export const getCurrentUser = (
+export const getCurrentUser = async (
   reqOrig: Request,
   res: Response,
   next: NextFunction
@@ -35,32 +51,41 @@ export const getCurrentUser = (
   const req = reqOrig as ReqWithUserInfo;
 
   console.log("Get user by token", req.user._id, req.user.role);
-  UserModel.findById(req.user._id)
-    .populate({
-      path: "chats",
-      select: "_id",
-      populate: {
-        path: "members",
-        select: "_id name role",
-      },
-    })
-    .orFail()
-    .then((user: any) => {
-      res.send(userPrivateInfoToSend(user));
-      console.log(`User ${user.name} found`);
-    })
-    .catch((err) => {
-      console.error(err.name);
-      if (err.name === "CastError") {
-        next(new BadRequestError(`The id: '${req.user._id}' is invalid`));
-        return;
-      }
-      if (err.name === "DocumentNotFoundError") {
-        next(new NotFoundError(`There's no user with id: ${req.user._id}`));
-        return;
-      }
-      next(err);
+  try {
+    const user = await UserModel.findById(req.user._id)
+      .populate(chatsPopulatedInfo)
+      .orFail()
+      .exec();
+
+    //here we filter non-existing chats (may be they were deleted for some reason from outside)
+    //so we perform this cleanup here
+    //actualy, when populating non-existing chats are not added to the array
+    //though, some documentation has info, that they can pe populated as null
+    //so we'd better check it
+    user.chats = user.chats?.filter((chat, idx) => {
+      // console.log(`Idx: ${idx}, chat: ${chat}`);
+      return chat !== null;
     });
+    await UserModel.updateOne(
+      { _id: user._id },
+      { $set: { chats: user.chats } }
+    );
+
+    res.send(userPrivateInfoToSend(user));
+    console.log(`User ${user.name} found`);
+    // console.dir(user.chats);
+  } catch (err: any) {
+    console.error(err.name);
+    if (err.name === "CastError") {
+      next(new BadRequestError(`The id: '${req.user._id}' is invalid`));
+      return;
+    }
+    if (err.name === "DocumentNotFoundError") {
+      next(new NotFoundError(`There's no user with id: ${req.user._id}`));
+      return;
+    }
+    next(err);
+  }
 };
 
 export const createUser = (req: Request, res: Response, next: NextFunction) => {
@@ -135,14 +160,7 @@ export const login = async (
           )) as IUser
         )._id
       )
-      .populate({
-        path: "chats",
-        select: "_id",
-        populate: {
-          path: "members",
-          select: "_id name role",
-        },
-      })
+      .populate(chatsPopulatedInfo)
 
       .then((user: any) => {
         console.log("Successful user login:", user.name);
@@ -207,24 +225,35 @@ export const modifyCurrentUserData = async (
   const req = reqOrig as ReqWithUserAndFileInfo;
 
   const { _id, __v, email, role, avatar, ...updatedInfo } = req.body;
-  console.dir(updatedInfo);
+  console.dir(updatedInfo.skills);
+
+  let currentModel: Model<any>;
+  switch (role) {
+    case "client":
+      currentModel = ClientModel;
+      break;
+    case "coach":
+      currentModel = CoachModel;
+      break;
+    case "admin":
+      currentModel = AdminModel;
+      break;
+    default:
+      currentModel = ClientModel;
+  }
+
   try {
-    const user = await UserModel.findByIdAndUpdate(req.user._id, updatedInfo, {
-      new: true,
-      runValidators: true,
-    })
-      .populate({
-        path: "chats",
-        select: "_id",
-        populate: {
-          path: "members",
-          select: "_id name role",
-        },
+    const user = await currentModel
+      .findByIdAndUpdate(req.user._id, updatedInfo, {
+        new: true,
+        runValidators: true,
       })
+      .populate(chatsPopulatedInfo)
       .orFail();
 
     res.send(userPrivateInfoToSend(user));
     console.log(`User ${user.name} modified`);
+    console.dir((user as unknown as ICoach).skills);
   } catch (err: any) {
     console.error(err.name);
     if (err.name === "DocumentNotFoundError") {
