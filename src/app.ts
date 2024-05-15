@@ -27,7 +27,14 @@ const {
 } = require("./middleware/validation");
 const { requestLogger, errorLogger } = require("./middleware/logger");
 
-export const userpicsPath = path.join(__dirname, "userpics");
+export const userpicsPath = path.join(
+  __dirname,
+  "..",
+  "..",
+  "data",
+  "userpics"
+);
+console.log(userpicsPath);
 
 const app = express();
 
