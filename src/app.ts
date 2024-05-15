@@ -1,7 +1,9 @@
-require("dotenv").config();
+import path from "path";
+require("dotenv").config({
+  path: path.join(__dirname, "..", ".env"),
+});
 import { connect } from "mongoose";
 import { Response, Request, NextFunction, Express } from "express";
-import path from "path";
 
 const { PORT = 3001 } = process.env;
 const express = require("express");
