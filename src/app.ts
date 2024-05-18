@@ -43,7 +43,11 @@ const app = express();
 app.use(helmet());
 
 export const corsOptions: cors.CorsOptions = {
-  origin: "http://localhost:5173",
+  origin: [
+    "http://localhost:5173",
+    "https://coachfind.me",
+    "https://www.coachfind.me",
+  ],
 };
 
 app.use(cors(corsOptions));
