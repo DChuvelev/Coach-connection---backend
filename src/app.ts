@@ -1,33 +1,32 @@
 import path from "path";
+import { connect } from "mongoose";
+import { type Response, type Request, type NextFunction } from "express";
 require("dotenv").config({
   path: path.join(__dirname, "..", ".env"),
 });
-import { connect } from "mongoose";
-import { Response, Request, NextFunction, Express } from "express";
-
-const { PORT = 3001 } = process.env;
-const express = require("express");
-
 import cors from "cors";
 import bodyParser from "body-parser";
 import helmet from "helmet";
 import { errors } from "celebrate";
-import { routes } from "./routes/index";
-import { createServer, Server } from "http";
-import session from "express-session";
+import routes from "./routes/index";
+import type session from "express-session";
 import initializeWebsocketServer from "./utils/websocket/websocket";
+import express from "express";
+import {
+  validateCreateUserData,
+  validateLoginData,
+} from "./middleware/validation";
+import { login, createUser } from "./controllers/users";
+
+import { requestLogger, errorLogger } from "./middleware/logger";
+import type { InternalServerError } from "./utils/errors/errorClasses";
+
+const { PORT = 3001 } = process.env;
 declare module "express" {
   interface Request {
     session: session.Session & Partial<session.SessionData>;
   }
 }
-
-const { login, createUser } = require("./controllers/users");
-const {
-  validateCreateUserData,
-  validateLoginData,
-} = require("./middleware/validation");
-const { requestLogger, errorLogger } = require("./middleware/logger");
 
 export const userpicsPath = path.join(
   __dirname,
@@ -53,7 +52,17 @@ export const corsOptions: cors.CorsOptions = {
 app.use(cors(corsOptions));
 
 console.log(`The app is runnung in ${process.env.NODE_ENV} mode.`);
-connect("mongodb://127.0.0.1:27017/coach-connection");
+
+const connectToDatabase = async (): Promise<void> => {
+  try {
+    await connect("mongodb://127.0.0.1:27017/coach-connection");
+    console.log("Connected to MongoDB");
+  } catch (error) {
+    console.error("Error connecting to MongoDB:", error);
+  }
+};
+
+void connectToDatabase();
 
 app.use("/avatars", (req: Request, res: Response, next: NextFunction) => {
   res.set("Cross-Origin-Resource-Policy", "cross-origin");
@@ -75,13 +84,20 @@ app.use(errorLogger);
 
 app.use(errors());
 
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.log(`${err.message}. Error status: ${err.status}`);
-  const { status = 500, message } = err;
-  res.status(status).send({
-    message: status === 500 ? "Internal server error" : message,
-  });
-});
+app.use(
+  (
+    err: InternalServerError,
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void => {
+    console.log(`${err.message}. Error status: ${err.status}`);
+    const { status = 500, message } = err;
+    res.status(status).send({
+      message: status === 500 ? "Internal server error" : message,
+    });
+  }
+);
 
 const httpServer = app.listen(PORT, () => {
   console.log(`App listening to port ${PORT}`);

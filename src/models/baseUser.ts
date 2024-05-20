@@ -1,4 +1,4 @@
-import mongoose, { Model, Schema, model, Types } from "mongoose";
+import { Schema, model, Types } from "mongoose";
 import validator from "validator";
 import bcrypt from "bcryptjs";
 
@@ -93,29 +93,35 @@ baseUserSchema.index({ email: 1, role: 1 }, { unique: true });
 
 export const UserModel = model<IUser>("user", baseUserSchema);
 
-export const findUserByCredentials = function <T>(
-  email: string,
-  password: string,
-  currentModel: Model<T>
-) {
-  if (!email || !password) {
-    return Promise.reject(new Error("Invalid data"));
+export const findUserByCredentials = async ({
+  email,
+  role,
+  password,
+}: {
+  email: string;
+  role: Roles;
+  password: string;
+}): Promise<Types.ObjectId> => {
+  try {
+    if (email === "" || password === "") {
+      throw new Error("Invalid data");
+    }
+    const user: IUser | null = await UserModel.findOne({ email, role }).select(
+      "+password"
+    );
+    if (user?.password === undefined || user?.password === null) {
+      throw new Error("Incorrect username or password");
+    }
+
+    const passwordOk = await bcrypt.compare(password, user.password);
+    if (passwordOk) {
+      // console.log(`User found: ${user}`);
+      return user._id;
+    } else {
+      throw new Error("Incorrect username or password");
+    }
+  } catch (err) {
+    console.log(err);
+    return await Promise.reject(err);
   }
-  return currentModel
-    .findOne({ email })
-    .select("+password")
-    .then((user: any) => {
-      console.log(user);
-      if (!user) {
-        return Promise.reject(new Error("Incorrect username or password"));
-      }
-      return bcrypt
-        .compare(password, user.password)
-        .then((matched: boolean) => {
-          if (!matched) {
-            return Promise.reject(new Error("Incorrect username or password"));
-          }
-          return user;
-        });
-    });
 };

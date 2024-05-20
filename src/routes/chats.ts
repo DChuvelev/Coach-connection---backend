@@ -1,6 +1,4 @@
 import { Router } from "express";
-export const chatsRouter = Router();
-
 import {
   addMessage,
   checkChat,
@@ -9,6 +7,8 @@ import {
   refreshChat,
   deleteChat,
 } from "../controllers/chats";
+
+export const chatsRouter = Router();
 
 chatsRouter.get("/:chatId", getChatByID);
 chatsRouter.patch("/check/:chatId", checkChat);

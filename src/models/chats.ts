@@ -1,5 +1,6 @@
-import mongoose, { Schema, model, Types } from "mongoose";
-import { IUser, Roles, UserModel } from "./baseUser";
+import { Schema, model, Types } from "mongoose";
+import type { IUser } from "./baseUser";
+import { UserModel } from "./baseUser";
 
 export interface IMessage {
   _id: Types.ObjectId;
@@ -13,7 +14,7 @@ export interface IMessage {
 export interface IChat {
   _id: Types.ObjectId;
   messages: IMessage[];
-  members: (Types.ObjectId | IUser)[];
+  members: Array<Types.ObjectId | IUser>;
   lastMessage?: Types.ObjectId;
 }
 
@@ -61,9 +62,9 @@ export const chatSchema = new Schema<IChat>({
   },
 });
 
-//Here we define a pre-middleware for deleteOne method.
-//When we delete a chat we have to delete all messages from it in MessageModel
-//and also remove links to it from it's members from UserModel
+//  Here we define a pre-middleware for deleteOne method.
+//  When we delete a chat we have to delete all messages from it in MessageModel
+//  and also remove links to it from it's members from UserModel
 chatSchema.pre(
   "deleteOne",
   { document: false, query: true },
@@ -72,17 +73,14 @@ chatSchema.pre(
       .findOne(this.getQuery())
       .lean<IChat>()
       .exec();
-    if (doc) {
-      console.log(
-        `Result of deleteing messages from deleted chat: ${await MessageModel.deleteMany({ fromChatId: doc._id })}`
-      );
-      console.log(
-        `Result of deleteing chat links from users: ${await UserModel.updateMany(
-          {
-            _id: { $in: doc.members.map((member) => member as Types.ObjectId) },
-          },
-          { $pull: { chats: doc._id, gotNewMessagesInChatIDs: doc._id } }
-        )}`
+    if (doc !== null) {
+      await MessageModel.deleteMany({ fromChatId: doc._id });
+
+      await UserModel.updateMany(
+        {
+          _id: { $in: doc.members.map((member) => member as Types.ObjectId) },
+        },
+        { $pull: { chats: doc._id, gotNewMessagesInChatIDs: doc._id } }
       );
     }
     next();

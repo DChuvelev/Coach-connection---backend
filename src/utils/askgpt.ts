@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
 
 import { communicateWithAssistant } from "./GptApi";
 import { InternalServerError } from "./errors/errorClasses";
@@ -11,7 +11,7 @@ export const chooseMeACoach = async (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   console.log("Ask GPT start. Request message:");
   console.log(req.body.message);
 
@@ -36,7 +36,7 @@ export const generateFeedback = async (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   console.log("Ask GPT start. Request message:");
   console.log(req.body.message);
 

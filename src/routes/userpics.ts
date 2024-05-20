@@ -1,5 +1,6 @@
-import { Request } from "express";
-import multer, { Multer, StorageEngine } from "multer";
+import type { Request } from "express";
+import multer from "multer";
+import type { Multer } from "multer";
 import { userpicsPath } from "../app";
 import { setUserpic } from "../controllers/users";
 import { Router } from "express";
@@ -18,7 +19,7 @@ const storage: multer.StorageEngine = multer.diskStorage({
 });
 
 const upload: Multer = multer({
-  storage: storage,
+  storage,
 });
 
 userpicsRouter.post("", upload.single("avatar"), setUserpic);

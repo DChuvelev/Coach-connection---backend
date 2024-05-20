@@ -1,22 +1,21 @@
-import { Response, Request, NextFunction } from "express";
-import { Model } from "mongoose";
-import { IUser, UserModel, findUserByCredentials } from "../models/baseUser";
+import type { Response, Request, NextFunction } from "express";
+import { UserModel, findUserByCredentials } from "../models/baseUser";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-// const faker = require("faker");
-import { faker } from "@faker-js/faker";
 import { ClientModel } from "../models/client";
-import { CoachModel, ICoach } from "../models/coach";
+import type { IClient } from "../models/client";
+import type { ICoach } from "../models/coach";
+import type { IAdmin } from "../models/admin";
+import { CoachModel } from "../models/coach";
 import {
   BadRequestError,
   ConflictError,
   UnauthorizedError,
   NotFoundError,
 } from "../utils/errors/errorClasses";
-import { ReqWithUserAndFileInfo, ReqWithUserInfo } from "../appTypes";
+import type { ReqWithUserAndFileInfo, ReqWithUserInfo } from "../appTypes";
 import { AdminModel } from "../models/admin";
-import { populate } from "dotenv";
-const { JWT_SECRET } = require("../utils/config");
+import { JWT_SECRET } from "../utils/config";
 
 export const chatsPopulatedInfo = {
   path: "chats",
@@ -33,13 +32,16 @@ export const chatsPopulatedInfo = {
   ],
 };
 
-const userPrivateInfoToSend = (user: any) => {
-  const { __v, password, ...privateInfoToSend } = user._doc;
+const userPrivateInfoToSend = (user: any): any => {
+  // const { __v, password, ...privateInfoToSend } = user._doc;
+  const { password, ...privateInfoToSend } = user;
+  // console.log(privateInfoToSend);
   return privateInfoToSend;
 };
 
-const userPublicInfoToSend = (user: any) => {
-  const { __v, password, email, role, status, ...publicInfoToSend } = user._doc;
+const userPublicInfoToSend = (user: any): any => {
+  // const { __v, password, email, role, status, ...publicInfoToSend } = user._doc;
+  const { password, email, role, status, ...publicInfoToSend } = user;
   return publicInfoToSend;
 };
 
@@ -47,7 +49,7 @@ export const getCurrentUser = async (
   reqOrig: Request,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   const req = reqOrig as ReqWithUserInfo;
 
   console.log("Get user by token", req.user._id, req.user.role);
@@ -55,13 +57,14 @@ export const getCurrentUser = async (
     const user = await UserModel.findById(req.user._id)
       .populate(chatsPopulatedInfo)
       .orFail()
+      .lean()
       .exec();
 
-    //here we filter non-existing chats (may be they were deleted for some reason from outside)
-    //so we perform this cleanup here
-    //actualy, when populating non-existing chats are not added to the array
-    //though, some documentation has info, that they can pe populated as null
-    //so we'd better check it
+    //  here we filter non-existing chats (may be they were deleted for some reason from outside)
+    //  so we perform this cleanup here
+    //  actualy, when populating non-existing chats are not added to the array
+    //  though, some documentation has info, that they can pe populated as null
+    //  so we'd better check it
     user.chats = user.chats?.filter((chat, idx) => {
       // console.log(`Idx: ${idx}, chat: ${chat}`);
       return chat !== null;
@@ -77,120 +80,119 @@ export const getCurrentUser = async (
   } catch (err: any) {
     console.error(err.name);
     if (err.name === "CastError") {
-      next(new BadRequestError(`The id: '${req.user._id}' is invalid`));
+      next(
+        new BadRequestError(`The id: '${req.user._id.toString()}' is invalid`)
+      );
       return;
     }
     if (err.name === "DocumentNotFoundError") {
-      next(new NotFoundError(`There's no user with id: ${req.user._id}`));
+      next(
+        new NotFoundError(`There's no user with id: ${req.user._id.toString()}`)
+      );
       return;
     }
     next(err);
   }
 };
 
-export const createUser = (req: Request, res: Response, next: NextFunction) => {
+export const createUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
   console.log("User creation request:");
   console.dir(req.body);
+  try {
+    const passwordHash = await bcrypt.hash(req.body.password as string, 10);
 
-  // let currentModel: Model<any>;
-  // switch (req.body.role) {
-  //   case "client":
-  //     currentModel = ClientModel;
-  //     break;
-  //   case "coach":
-  //     currentModel = CoachModel;
-  //     break;
-  //   case "admin":
-  //     currentModel = AdminModel;
-  //     break;
-  //   default:
-  //     currentModel = ClientModel;
-  // }
-
-  bcrypt
-    .hash(req.body.password, 10)
-    .then((hash: string) => UserModel.create({ ...req.body, password: hash }))
-    .then((user: any) => {
-      res.send(userPrivateInfoToSend(user));
-      console.log(`User created: ${user}`);
-    })
-    .catch((err: any) => {
-      console.error(err.name, "|", err.message);
-      if (err.name === "ValidationError") {
-        next(new BadRequestError("Invalid data"));
-        return;
-      }
-      if (err.name === "MongoServerError" || err.code === 11000) {
-        next(new ConflictError("User already exists"));
-        return;
-      }
-      next(err);
+    const user = await UserModel.create({
+      ...req.body,
+      password: passwordHash,
     });
+
+    res.send(userPrivateInfoToSend(user));
+    console.log(`User created: ${user.name}`);
+  } catch (err: any) {
+    console.error(err.name, "|", err.message);
+    if (err.name === "ValidationError") {
+      next(new BadRequestError("Invalid data"));
+      return;
+    }
+    if (err.name === "MongoServerError" || err.code === 11000) {
+      next(new ConflictError("User already exists"));
+      return;
+    }
+    next(err);
+  }
 };
 
 export const login = async (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   console.log("Login");
-  console.dir(req.body);
+
   try {
-    let currentModel: Model<any>;
+    const userId = await findUserByCredentials({
+      email: req.body.email,
+      password: req.body.password,
+      role: req.body.role,
+    });
+
+    let user;
+
     switch (req.body.role) {
       case "client":
-        currentModel = ClientModel;
+        user = await ClientModel.findById(userId)
+          .populate(chatsPopulatedInfo)
+          .orFail()
+          .lean()
+          .exec();
         break;
       case "coach":
-        currentModel = CoachModel;
+        user = await CoachModel.findById(userId)
+          .populate(chatsPopulatedInfo)
+          .orFail()
+          .lean()
+          .exec();
         break;
       case "admin":
-        currentModel = AdminModel;
+        user = await AdminModel.findById(userId)
+          .populate(chatsPopulatedInfo)
+          .orFail()
+          .lean()
+          .exec();
         break;
-      default:
-        currentModel = ClientModel;
     }
-    const user = currentModel
-      .findById(
-        (
-          (await findUserByCredentials(
-            req.body.email,
-            req.body.password,
-            currentModel
-          )) as IUser
-        )._id
-      )
-      .populate(chatsPopulatedInfo)
 
-      .then((user: any) => {
-        console.log("Successful user login:", user.name);
-        const token = jwt.sign({ _id: user._id, role: user.role }, JWT_SECRET, {
-          expiresIn: "7d",
-        });
-        res.send({
-          token,
-          ...userPrivateInfoToSend(user),
-        });
-      });
+    console.log("Successful user login:", user);
+    const token = jwt.sign({ _id: user?._id, role: user?.role }, JWT_SECRET, {
+      expiresIn: "7d",
+    });
+    res.send({
+      token,
+      ...userPrivateInfoToSend(user),
+    });
   } catch (err: any) {
     console.error("Error:", err.message);
     if (err.message === "Incorrect username or password") {
-      next(new UnauthorizedError(err.message));
+      next(new UnauthorizedError(err.message as string));
       return;
     }
     if (err.message === "Invalid data") {
-      next(new BadRequestError(err.message));
+      next(new BadRequestError(err.message as string));
       return;
     }
     next(err);
   }
 };
 
-export const setUserpic = (
+export const setUserpic = async (
   reqOrig: Request,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   const req = reqOrig as ReqWithUserAndFileInfo;
 
   const avatar = req.file.filename;
@@ -200,13 +202,17 @@ export const setUserpic = (
     { new: true, runValidators: true }
   )
     .then((user: any) => {
-      res.send(userPrivateInfoToSend(user));
+      res.send(userPrivateInfoToSend(user._doc));
       console.log(`User ${user.name} modified`);
     })
     .catch((err) => {
       console.error(err.name);
       if (err.name === "DocumentNotFoundError") {
-        next(new NotFoundError(`There's no user with id: ${req.user._id}`));
+        next(
+          new NotFoundError(
+            `There's no user with id: ${req.user._id.toString()}`
+          )
+        );
         return;
       }
       if (err.name === "ValidationError") {
@@ -221,43 +227,71 @@ export const modifyCurrentUserData = async (
   reqOrig: Request,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   const req = reqOrig as ReqWithUserAndFileInfo;
 
   const { _id, __v, email, role, avatar, ...updatedInfo } = req.body;
-  console.dir(updatedInfo.skills);
+  const clientUpdatedInfo = updatedInfo as IClient;
+  const coachUpdatedInfo = updatedInfo as ICoach;
+  const adminUpdatedInfo = updatedInfo as IAdmin;
+  // console.dir(updatedInfo.skills);
 
-  let currentModel: Model<any>;
-  switch (role) {
+  let user;
+
+  switch (req.body.role) {
     case "client":
-      currentModel = ClientModel;
+      user = await ClientModel.findByIdAndUpdate(
+        req.user._id,
+        clientUpdatedInfo,
+        {
+          new: true,
+          runValidators: true,
+        }
+      )
+        .populate(chatsPopulatedInfo)
+        .orFail()
+        .lean()
+        .exec();
       break;
     case "coach":
-      currentModel = CoachModel;
+      user = await CoachModel.findByIdAndUpdate(
+        req.user._id,
+        coachUpdatedInfo,
+        {
+          new: true,
+          runValidators: true,
+        }
+      )
+        .populate(chatsPopulatedInfo)
+        .orFail()
+        .lean()
+        .exec();
       break;
     case "admin":
-      currentModel = AdminModel;
+      user = await AdminModel.findByIdAndUpdate(
+        req.user._id,
+        adminUpdatedInfo,
+        {
+          new: true,
+          runValidators: true,
+        }
+      )
+        .populate(chatsPopulatedInfo)
+        .orFail()
+        .lean()
+        .exec();
       break;
-    default:
-      currentModel = ClientModel;
   }
 
   try {
-    const user = await currentModel
-      .findByIdAndUpdate(req.user._id, updatedInfo, {
-        new: true,
-        runValidators: true,
-      })
-      .populate(chatsPopulatedInfo)
-      .orFail();
-
     res.send(userPrivateInfoToSend(user));
-    console.log(`User ${user.name} modified`);
-    console.dir((user as unknown as ICoach).skills);
+    console.log(`User ${user?.name} modified`);
   } catch (err: any) {
     console.error(err.name);
     if (err.name === "DocumentNotFoundError") {
-      next(new NotFoundError(`There's no user with id: ${req.user._id}`));
+      next(
+        new NotFoundError(`There's no user with id: ${req.user._id.toString()}`)
+      );
       return;
     }
     if (err.name === "ValidationError") {
@@ -268,142 +302,140 @@ export const modifyCurrentUserData = async (
   }
 };
 
-export const getAllCoaches = (
+export const getAllCoaches = async (
   reqOrigin: Request,
   res: Response,
   next: NextFunction
-) => {
-  const req = reqOrigin as ReqWithUserInfo;
+): Promise<void> => {
+  try {
+    const allCoaches: ICoach[] = await CoachModel.find({}).lean().exec();
 
-  CoachModel.find({})
-    .then((foundDoc: unknown) => {
-      const coachesFullInfo = foundDoc as Array<{ _doc: ICoach }>;
-      console.log("Get all items");
-      const coachesToSend = coachesFullInfo
-        .filter((coach) => coach._doc.status === "active")
-        .map((coach) => userPublicInfoToSend(coach));
-      res.send({ data: coachesToSend });
-    })
-    .catch((err: Error) => {
-      console.error(err);
-      next(err);
-    });
+    // const coachesFullInfo = foundDoc as Array<{ _doc: ICoach }>;
+    console.log("Get all items");
+    const coachesToSend = allCoaches
+      .filter((coach) => coach.status === "active")
+      .map((coach) => userPublicInfoToSend(coach));
+    res.send({ data: coachesToSend });
+  } catch (err) {
+    console.error(err);
+    next(err);
+  }
 };
 
 // ------------------ temporary ----------------------------
 
-export const generateRandomCoach = (
-  reqOrigin: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  const req = reqOrigin as ReqWithUserInfo;
+// export const generateRandomCoach = (
+//   reqOrigin: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   const req = reqOrigin as ReqWithUserInfo;
 
-  interface CoachInfo {
-    role: string;
-    name: string;
-    avatar: string;
-    email: string;
-    gender: string;
-    birthDate: string;
-    languages: Array<string>;
-    about: string;
-    skills: Array<string>;
-    sertification: string;
-    sertificationLevel: Array<string>;
-    status: string;
-  }
+//   interface CoachInfo {
+//     role: string;
+//     name: string;
+//     avatar: string;
+//     email: string;
+//     gender: string;
+//     birthDate: string;
+//     languages: Array<string>;
+//     about: string;
+//     skills: Array<string>;
+//     sertification: string;
+//     sertificationLevel: Array<string>;
+//     status: string;
+//   }
 
-  const roles = ["client", "coach", "admin"];
-  const genders = ["male", "female", "undefined"];
-  const langs = ["en", "ru", "germ", "fr"];
-  const skills = [
-    "goalSetting",
-    "personalEffectiveness",
-    "motivation",
-    "timeManagement",
-    "selfConfidence",
-    "productiveCommunication",
-    "stressManagement",
-    "decisionMaking",
-    "relationships",
-    "personalDevelopment",
-  ];
-  const sert = ["inTraining", "lev1", "lev2", "levFollowing"];
-  const sertLev = [
-    "ACC",
-    "PCC",
-    "MCC",
-    "PractRFPC",
-    "ExpertRFPC",
-    "MasterRFPC",
-  ];
-  const status = ["active", "busy"];
-  // Set a minimum age (let's say 18 years old)
-  const minAge = 18;
-  const maxAge = 65; // You can adjust this
+//   const roles = ["client", "coach", "admin"];
+//   const genders = ["male", "female", "undefined"];
+//   const langs = ["en", "ru", "germ", "fr"];
+//   const skills = [
+//     "goalSetting",
+//     "personalEffectiveness",
+//     "motivation",
+//     "timeManagement",
+//     "selfConfidence",
+//     "productiveCommunication",
+//     "stressManagement",
+//     "decisionMaking",
+//     "relationships",
+//     "personalDevelopment",
+//   ];
+//   const sert = ["inTraining", "lev1", "lev2", "levFollowing"];
+//   const sertLev = [
+//     "ACC",
+//     "PCC",
+//     "MCC",
+//     "PractRFPC",
+//     "ExpertRFPC",
+//     "MasterRFPC",
+//   ];
+//   const status = ["active", "busy"];
+//   // Set a minimum age (let's say 18 years old)
+//   const minAge = 18;
+//   const maxAge = 65; // You can adjust this
 
-  function generateBirthDate() {
-    const yearsAgo = faker.number.int({ min: minAge, max: maxAge });
+//   function generateBirthDate() {
+//     const yearsAgo = faker.number.int({ min: minAge, max: maxAge });
 
-    // Subtract years from the current date
-    const birthDate = new Date();
-    birthDate.setFullYear(birthDate.getFullYear() - yearsAgo);
+//     // Subtract years from the current date
+//     const birthDate = new Date();
+//     birthDate.setFullYear(birthDate.getFullYear() - yearsAgo);
 
-    // Format as YYYY-MM-DD (no changes needed here)
-    return birthDate.toISOString().slice(0, 10);
-  }
+//     // Format as YYYY-MM-DD (no changes needed here)
+//     return birthDate.toISOString().slice(0, 10);
+//   }
 
-  function generateCoachAbout() {
-    const coachingFocus = [
-      "life transformation",
-      "career development",
-      "mindfulness",
-      "relationship building",
-      "goal achievement",
-    ];
-    const adjectives = [
-      "experienced",
-      "dedicated",
-      "compassionate",
-      "results-oriented",
-      "insightful",
-    ];
+//   function generateCoachAbout() {
+//     const coachingFocus = [
+//       "life transformation",
+//       "career development",
+//       "mindfulness",
+//       "relationship building",
+//       "goal achievement",
+//     ];
+//     const adjectives = [
+//       "experienced",
+//       "dedicated",
+//       "compassionate",
+//       "results-oriented",
+//       "insightful",
+//     ];
 
-    const focus = faker.helpers.arrayElement(coachingFocus);
-    const adjective = faker.helpers.arrayElement(adjectives);
+//     const focus = faker.helpers.arrayElement(coachingFocus);
+//     const adjective = faker.helpers.arrayElement(adjectives);
 
-    const aboutMe = `I'm an ${adjective} coach specializing in ${focus}. I'm committed to helping you unlock your potential and achieve your goals. ${faker.company.buzzPhrase()}`; // Adds a coaching buzzword
+//     const aboutMe = `I'm an ${adjective} coach specializing in ${focus}. I'm committed to helping you unlock your potential and achieve your goals. ${faker.company.buzzPhrase()}`; // Adds a coaching buzzword
 
-    return aboutMe;
-  }
+//     return aboutMe;
+//   }
 
-  const generateCoach: () => CoachInfo = () => {
-    const addedCoach: CoachInfo = {
-      role: "coach",
-      name: faker.person.fullName(),
-      avatar: "avatar_661cf19ca06caf5fb48b7e34",
-      email: faker.internet.email(),
-      gender: faker.helpers.arrayElement(genders),
-      birthDate: generateBirthDate(),
-      languages: faker.helpers.arrayElements(langs),
-      about: generateCoachAbout(),
-      skills: faker.helpers.arrayElements(skills),
-      sertification: faker.helpers.arrayElement(sert),
-      sertificationLevel: faker.helpers.arrayElements(sertLev),
-      status: faker.helpers.arrayElement(status),
-    };
-    return addedCoach;
-  };
+//   const generateCoach: () => CoachInfo = () => {
+//     const addedCoach: CoachInfo = {
+//       role: "coach",
+//       name: faker.person.fullName(),
+//       avatar: "avatar_661cf19ca06caf5fb48b7e34",
+//       email: faker.internet.email(),
+//       gender: faker.helpers.arrayElement(genders),
+//       birthDate: generateBirthDate(),
+//       languages: faker.helpers.arrayElements(langs),
+//       about: generateCoachAbout(),
+//       skills: faker.helpers.arrayElements(skills),
+//       sertification: faker.helpers.arrayElement(sert),
+//       sertificationLevel: faker.helpers.arrayElements(sertLev),
+//       status: faker.helpers.arrayElement(status),
+//     };
+//     return addedCoach;
+//   };
 
-  const addCoachToDB = async () => {
-    const hash = await bcrypt.hash("easyone", 10);
-    const createdUser = await CoachModel.create({
-      ...generateCoach(),
-      password: hash,
-    });
-    res.send(createdUser);
-  };
-  console.log("Generating random coach");
-  addCoachToDB();
-};
+//   const addCoachToDB = async () => {
+//     const hash = await bcrypt.hash("easyone", 10);
+//     const createdUser = await CoachModel.create({
+//       ...generateCoach(),
+//       password: hash,
+//     });
+//     res.send(createdUser);
+//   };
+//   console.log("Generating random coach");
+//   addCoachToDB();
+// };

@@ -1,10 +1,3 @@
-import {
-  ASSISTANT_ID_CHOOSE_COACH,
-  ASSISTANT_ID_GENERATE_FEEDBACK,
-  BASE_URL,
-  OPENAI_API_KEY,
-} from "./constants";
-
 import OpenAI from "openai";
 
 const openai = new OpenAI();
@@ -23,19 +16,14 @@ export const communicateWithAssistant = async ({
 }: {
   message: string;
   assistantId: string;
-}) => {
+}): Promise<string | undefined> => {
   const thread = await openai.beta.threads.create();
-  const msg = await openai.beta.threads.messages.create(thread.id, {
-    role: "user",
-    content: message,
-  });
 
-  let run = await openai.beta.threads.runs.createAndPoll(thread.id, {
+  const run = await openai.beta.threads.runs.createAndPoll(thread.id, {
     assistant_id: assistantId,
     instructions: "",
   });
 
-  let resp: string = "";
   if (run.status === "completed") {
     const messages = await openai.beta.threads.messages.list(run.thread_id);
     for (const message of messages.data.reverse()) {

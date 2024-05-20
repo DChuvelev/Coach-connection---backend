@@ -1,8 +1,5 @@
 import { Router } from "express";
-export const usersRouter = Router();
-
 import {
-  generateRandomCoach,
   getAllCoaches,
   getCurrentUser,
   modifyCurrentUserData,
@@ -10,7 +7,7 @@ import {
 import { validateModifyUserData } from "../middleware/validation";
 import { auth } from "../middleware/auth";
 
+export const usersRouter = Router();
 usersRouter.get("/me", auth, getCurrentUser);
 usersRouter.patch("/me", auth, validateModifyUserData, modifyCurrentUserData);
 usersRouter.get("/coaches", getAllCoaches);
-usersRouter.get("/coaches/create/random", generateRandomCoach);

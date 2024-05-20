@@ -1,5 +1,6 @@
 import { Schema } from "mongoose";
-import { IUser, UserModel, findUserByCredentials } from "./baseUser";
+import { UserModel } from "./baseUser";
+import type { IUser } from "./baseUser";
 
 export interface IClient extends IUser {
   coachRequests: string[];
@@ -17,7 +18,3 @@ export const ClientModel = UserModel.discriminator<IClient>(
   "client",
   clientSchema
 );
-
-clientSchema.statics.findClientByCredentials = function (email, password) {
-  return findUserByCredentials(email, password, this);
-};

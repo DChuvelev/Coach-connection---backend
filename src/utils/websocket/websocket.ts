@@ -1,8 +1,8 @@
-import { Server, Socket } from "socket.io";
-import { createServer, Server as HttpServer } from "http";
+import { Server } from "socket.io";
+import type { Socket } from "socket.io";
+import type { Server as HttpServer } from "http";
 import { corsOptions } from "../../app";
-import { Types } from "mongoose";
-import cors from "cors";
+import type { Types } from "mongoose";
 
 export interface SocketsUserInfo {
   socket: Socket;
@@ -16,7 +16,7 @@ interface SocketsLoginInfo {
 
 export const socketUsersRecord: Record<string, SocketsUserInfo> = {};
 
-export const initializeWebsocketServer = (httpServer: HttpServer) => {
+export const initializeWebsocketServer = (httpServer: HttpServer): Server => {
   const io = new Server(httpServer, {
     cors: corsOptions,
   });
@@ -26,7 +26,7 @@ export const initializeWebsocketServer = (httpServer: HttpServer) => {
       console.log(`New socket connection, socket: ${socket.id}`);
       // console.log(`We got a new websocket connection: ${data}`);
       socketUsersRecord[data.token] = {
-        socket: socket,
+        socket,
         userId: data.userId,
       };
       // console.log(

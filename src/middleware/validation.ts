@@ -1,12 +1,11 @@
 import { celebrate, Joi } from "celebrate";
-import { NextFunction, Request, Response } from "express";
-import validator from "validator";
+import type { NextFunction, Request, Response } from "express";
 
 export const validateCreateUserData = (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): void => {
   celebrate({
     body: Joi.object()
       .keys({
@@ -30,7 +29,7 @@ export const validateModifyUserData = (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): void => {
   celebrate({
     body: Joi.object()
       .keys({
@@ -48,7 +47,7 @@ export const validateLoginData = (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): void => {
   celebrate({
     body: Joi.object()
       .keys({
@@ -63,7 +62,11 @@ export const validateLoginData = (
   })(req, res, next);
 };
 
-export const validateId = (req: Request, res: Response, next: NextFunction) => {
+export const validateId = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
   console.log(req.params);
   celebrate({
     params: Joi.object().keys({
