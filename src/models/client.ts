@@ -6,13 +6,7 @@ export interface IClient extends IUser {
   coachRequests: string[];
 }
 
-const clientSchema = new Schema<IClient>({
-  coachRequests: [
-    {
-      type: String,
-    },
-  ],
-});
+const clientSchema = new Schema<IClient>({});
 
 export const ClientModel = UserModel.discriminator<IClient>(
   "client",

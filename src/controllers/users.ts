@@ -166,7 +166,7 @@ export const login = async (
         break;
     }
 
-    console.log("Successful user login:", user);
+    console.log("Successful user login:", user?.name);
     const token = jwt.sign({ _id: user?._id, role: user?.role }, JWT_SECRET, {
       expiresIn: "7d",
     });
@@ -230,15 +230,24 @@ export const modifyCurrentUserData = async (
 ): Promise<void> => {
   const req = reqOrig as ReqWithUserAndFileInfo;
 
-  const { _id, __v, email, role, avatar, ...updatedInfo } = req.body;
+  const {
+    _id,
+    __v,
+    email,
+    role,
+    avatar,
+    chats,
+    gotNewMessagesInChatIDs,
+    ...updatedInfo
+  } = req.body;
   const clientUpdatedInfo = updatedInfo as IClient;
   const coachUpdatedInfo = updatedInfo as ICoach;
   const adminUpdatedInfo = updatedInfo as IAdmin;
-  // console.dir(updatedInfo.skills);
+  // console.dir(updatedInfo);
 
   let user;
 
-  switch (req.body.role) {
+  switch (req.user.role) {
     case "client":
       user = await ClientModel.findByIdAndUpdate(
         req.user._id,
@@ -284,6 +293,7 @@ export const modifyCurrentUserData = async (
   }
 
   try {
+    // console.dir(user);
     res.send(userPrivateInfoToSend(user));
     console.log(`User ${user?.name} modified`);
   } catch (err: any) {
