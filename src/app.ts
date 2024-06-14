@@ -46,7 +46,7 @@ const app = express();
 
 app.use(helmet());
 
-app.use(limiter);
+// app.use(limiter);
 
 export const corsOptions: cors.CorsOptions = {
   origin: [

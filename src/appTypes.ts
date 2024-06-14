@@ -13,3 +13,9 @@ export interface ReqWithUserAndFileInfo extends Request {
   file: Express.Multer.File;
   user: TokenUserInfo;
 }
+
+export interface ReqChangePassword extends Request {
+  oldPassword: string;
+  newPassword: string;
+  user: TokenUserInfo;
+}
