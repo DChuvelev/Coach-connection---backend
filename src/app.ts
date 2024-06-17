@@ -70,6 +70,19 @@ const connectToDatabase = async (): Promise<void> => {
 };
 
 void connectToDatabase();
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const timestamp = new Date().toISOString();
+  const requestInfo = {
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    userAgent: req.headers["user-agent"], // Access user agent from headers
+  };
+
+  console.log(requestInfo);
+
+  next();
+});
 
 app.use("/avatars", (req: Request, res: Response, next: NextFunction) => {
   res.set("Cross-Origin-Resource-Policy", "cross-origin");
