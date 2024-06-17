@@ -91,6 +91,7 @@ const baseUserSchema = new Schema<IUser>(
 
 baseUserSchema.index({ email: 1, role: 1 }, { unique: true });
 
+
 export const UserModel = model<IUser>("user", baseUserSchema);
 
 export const findUserByCredentials = async ({
