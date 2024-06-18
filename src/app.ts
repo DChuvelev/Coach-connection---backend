@@ -70,19 +70,23 @@ const connectToDatabase = async (): Promise<void> => {
 };
 
 void connectToDatabase();
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const timestamp = new Date().toISOString();
-  const requestInfo = {
-    method: req.method,
-    url: req.originalUrl,
-    ip: req.ip,
-    userAgent: req.headers["user-agent"], // Access user agent from headers
-  };
 
-  console.log(requestInfo);
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-  next();
-});
+// app.use((req: Request, res: Response, next: NextFunction) => {
+//   const timestamp = new Date().toISOString();
+//   const requestInfo = {
+//     method: req.method,
+//     url: req.originalUrl,
+//     ip: req.ip,
+//     userAgent: req.headers["user-agent"], // Access user agent from headers
+//   };
+
+//   console.log(requestInfo);
+
+//   next();
+// });
 
 app.use("/avatars", (req: Request, res: Response, next: NextFunction) => {
   res.set("Cross-Origin-Resource-Policy", "cross-origin");
@@ -90,7 +94,9 @@ app.use("/avatars", (req: Request, res: Response, next: NextFunction) => {
 });
 app.use("/avatars", express.static(userpicsPath));
 
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: "50mb" }));
+app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
+
 app.use("/", routes);
 
 app.use(requestLogger);
