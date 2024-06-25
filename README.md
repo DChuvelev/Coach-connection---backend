@@ -2,6 +2,8 @@
 
 You can find the website at: https://coachfind.me
 
+That's the final project for my full stack course at TripleTen
+
 Find your perfect coach with CoachFind - a platform connecting individuals with coaches specializing in various fields.
 
 # This is backend CoachFind project
