@@ -6,6 +6,7 @@ import { ClientModel } from "../models/client";
 import type { IClient } from "../models/client";
 import type { ICoach } from "../models/coach";
 import type { IAdmin } from "../models/admin";
+import { unlink } from "fs/promises";
 import { CoachModel } from "../models/coach";
 import {
   BadRequestError,
@@ -13,9 +14,15 @@ import {
   UnauthorizedError,
   NotFoundError,
 } from "../utils/errors/errorClasses";
-import type { ReqWithUserAndFileInfo, ReqWithUserInfo } from "../appTypes";
+import type {
+  ReqChangePassword,
+  ReqWithUserAndFileInfo,
+  ReqWithUserInfo,
+} from "../appTypes";
 import { AdminModel } from "../models/admin";
 import { JWT_SECRET } from "../utils/config";
+import path from "path";
+import { userpicsPath } from "../app";
 
 export const chatsPopulatedInfo = {
   path: "chats",
@@ -166,7 +173,7 @@ export const login = async (
         break;
     }
 
-    console.log("Successful user login:", user);
+    console.log("Successful user login:", user?.name);
     const token = jwt.sign({ _id: user?._id, role: user?.role }, JWT_SECRET, {
       expiresIn: "7d",
     });
@@ -196,96 +203,34 @@ export const setUserpic = async (
   const req = reqOrig as ReqWithUserAndFileInfo;
 
   const avatar = req.file.filename;
-  UserModel.findByIdAndUpdate(
-    req.user._id,
-    { avatar },
-    { new: true, runValidators: true }
-  )
-    .then((user: any) => {
-      res.send(userPrivateInfoToSend(user._doc));
-      console.log(`User ${user.name} modified`);
-    })
-    .catch((err) => {
-      console.error(err.name);
-      if (err.name === "DocumentNotFoundError") {
-        next(
-          new NotFoundError(
-            `There's no user with id: ${req.user._id.toString()}`
-          )
-        );
-        return;
-      }
-      if (err.name === "ValidationError") {
-        next(new BadRequestError("Invalid data"));
-        return;
-      }
-      next(err);
-    });
-};
-
-export const modifyCurrentUserData = async (
-  reqOrig: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  const req = reqOrig as ReqWithUserAndFileInfo;
-
-  const { _id, __v, email, role, avatar, ...updatedInfo } = req.body;
-  const clientUpdatedInfo = updatedInfo as IClient;
-  const coachUpdatedInfo = updatedInfo as ICoach;
-  const adminUpdatedInfo = updatedInfo as IAdmin;
-  // console.dir(updatedInfo.skills);
-
-  let user;
-
-  switch (req.body.role) {
-    case "client":
-      user = await ClientModel.findByIdAndUpdate(
-        req.user._id,
-        clientUpdatedInfo,
-        {
-          new: true,
-          runValidators: true,
-        }
-      )
-        .populate(chatsPopulatedInfo)
-        .orFail()
-        .lean()
-        .exec();
-      break;
-    case "coach":
-      user = await CoachModel.findByIdAndUpdate(
-        req.user._id,
-        coachUpdatedInfo,
-        {
-          new: true,
-          runValidators: true,
-        }
-      )
-        .populate(chatsPopulatedInfo)
-        .orFail()
-        .lean()
-        .exec();
-      break;
-    case "admin":
-      user = await AdminModel.findByIdAndUpdate(
-        req.user._id,
-        adminUpdatedInfo,
-        {
-          new: true,
-          runValidators: true,
-        }
-      )
-        .populate(chatsPopulatedInfo)
-        .orFail()
-        .lean()
-        .exec();
-      break;
-  }
-
   try {
-    res.send(userPrivateInfoToSend(user));
-    console.log(`User ${user?.name} modified`);
+    const oldUserInfo = await UserModel.findById(req.user._id)
+      .select("avatar")
+      .orFail()
+      .exec();
+    const updatedUser = await UserModel.findByIdAndUpdate(
+      req.user._id,
+      { avatar },
+      { new: true, runValidators: true }
+    )
+      .orFail()
+      .lean()
+      .exec();
+
+    res.send(userPrivateInfoToSend(updatedUser));
+    console.log(`User ${updatedUser.name} modified`);
+    console.log(
+      `Old avatar: ${oldUserInfo.avatar}, new avatar: ${updatedUser.avatar}`
+    );
+    if (oldUserInfo.avatar) {
+      const oldAvatarPath = path.join(userpicsPath, oldUserInfo.avatar);
+      console.log(oldAvatarPath);
+      try {
+        await unlink(oldAvatarPath);
+      } catch (err: any) {
+        console.log("Error deleting old avatar");
+      }
+    }
   } catch (err: any) {
     console.error(err.name);
     if (err.name === "DocumentNotFoundError") {
@@ -298,6 +243,166 @@ export const modifyCurrentUserData = async (
       next(new BadRequestError("Invalid data"));
       return;
     }
+    next(err);
+  }
+};
+
+export const modifyCurrentUserData = async (
+  reqOrig: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const req = reqOrig as ReqWithUserAndFileInfo;
+
+  const {
+    _id,
+    __v,
+    role,
+    avatar,
+    chats,
+    gotNewMessagesInChatIDs,
+    ...updatedInfo
+  } = req.body;
+  const clientUpdatedInfo = updatedInfo as IClient;
+  const coachUpdatedInfo = updatedInfo as ICoach;
+  const adminUpdatedInfo = updatedInfo as IAdmin;
+  // console.dir(updatedInfo);
+
+  let user;
+
+  try {
+    switch (req.user.role) {
+      case "client":
+        user = await ClientModel.findByIdAndUpdate(
+          req.user._id,
+          clientUpdatedInfo,
+          {
+            new: true,
+            runValidators: true,
+          }
+        )
+          .populate(chatsPopulatedInfo)
+          .orFail()
+          .lean()
+          .exec();
+        break;
+      case "coach":
+        user = await CoachModel.findByIdAndUpdate(
+          req.user._id,
+          coachUpdatedInfo,
+          {
+            new: true,
+            runValidators: true,
+          }
+        )
+          .populate(chatsPopulatedInfo)
+          .orFail()
+          .lean()
+          .exec();
+        break;
+      case "admin":
+        user = await AdminModel.findByIdAndUpdate(
+          req.user._id,
+          adminUpdatedInfo,
+          {
+            new: true,
+            runValidators: true,
+          }
+        )
+          .populate(chatsPopulatedInfo)
+          .orFail()
+          .lean()
+          .exec();
+        break;
+    }
+
+    // console.dir(user);
+    res.send(userPrivateInfoToSend(user));
+    console.log(`User ${user?.name} modified`);
+  } catch (err: any) {
+    console.error(err.name, "|", err.message);
+
+    if (err.name === "MongoServerError" || err.code === 11000) {
+      next(new ConflictError("User already exists"));
+      return;
+    }
+
+    if (err.name === "DocumentNotFoundError") {
+      next(
+        new NotFoundError(`There's no user with id: ${req.user._id.toString()}`)
+      );
+      return;
+    }
+
+    if (err.name === "ValidationError") {
+      next(new BadRequestError("Invalid data"));
+      return;
+    }
+
+    next(err);
+  }
+};
+
+export const updateUserPassword = async (
+  reqOrig: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const req = reqOrig as ReqChangePassword;
+
+  const { oldPassword, password } = req.body;
+
+  // const clientUpdatedInfo = updatedInfo as IClient;
+  // const coachUpdatedInfo = updatedInfo as ICoach;
+  // const adminUpdatedInfo = updatedInfo as IAdmin;
+  // console.dir(updatedInfo);
+
+  let user;
+
+  try {
+    const user = await UserModel.findById(req.user._id)
+      .orFail()
+      .select("+password");
+
+    if (user.password) {
+      const passwordOk = await bcrypt.compare(oldPassword, user.password);
+      if (!passwordOk) {
+        throw new UnauthorizedError("Wrong old password");
+      }
+
+      console.log(req.body);
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      user.password = hashedPassword;
+
+      await user.save();
+
+      console.log(
+        `Password updated successfully for user with ID: ${req.user._id}`
+      );
+      res.send({ message: "Password changed" });
+    }
+  } catch (err: any) {
+    console.error(err.name, "|", err.message);
+
+    if (err.name === "MongoServerError" || err.code === 11000) {
+      next(new ConflictError("User already exists"));
+      return;
+    }
+
+    if (err.name === "DocumentNotFoundError") {
+      next(
+        new NotFoundError(`There's no user with id: ${req.user._id.toString()}`)
+      );
+      return;
+    }
+
+    if (err.name === "ValidationError") {
+      next(new BadRequestError("Invalid data"));
+      return;
+    }
+
     next(err);
   }
 };

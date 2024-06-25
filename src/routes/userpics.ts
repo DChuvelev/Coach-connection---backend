@@ -13,7 +13,11 @@ const storage: multer.StorageEngine = multer.diskStorage({
   },
   filename: function (req: Request & { user: { _id: string } }, file, cb) {
     console.log(req.user._id);
-    const uniqueSuffix = "avatar_" + req.user._id;
+    const uniqueSuffix =
+      "avatar_" +
+      req.user._id +
+      "_" +
+      Math.random().toString(36).substring(2, 10);
     cb(null, uniqueSuffix);
   },
 });

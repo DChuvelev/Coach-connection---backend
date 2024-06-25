@@ -6,6 +6,12 @@ import type { IUser } from "../models/baseUser";
 import { UserModel } from "../models/baseUser";
 import mongoose, { Types } from "mongoose";
 import { socketUsersRecord } from "../utils/websocket/websocket";
+import {
+  BadRequestError,
+  ForbiddenError,
+  InternalServerError,
+  NotFoundError,
+} from "../utils/errors/errorClasses";
 
 export const getChatByID = (
   reqOrig: Request,
@@ -39,9 +45,21 @@ export const checkChat = async (
       });
     }
     res.sendStatus(200);
-  } catch (err) {
+  } catch (err: any) {
     console.log(err);
-    next(err);
+    if (err.name === "DocumentNotFoundError") {
+      next(new NotFoundError(`There's no chat with id: ${req.params.chatId}`));
+      return;
+    }
+    if (err.name === "CastError") {
+      next(new BadRequestError(`Id '${req.params.chatId}' is invalid`));
+      return;
+    }
+    if (err.name === "Error" && err.message === "Forbidden") {
+      next(new ForbiddenError("Unauthorized"));
+      return;
+    }
+    next(new InternalServerError("Server error"));
   }
 };
 
@@ -81,9 +99,13 @@ export const createChat = async (
     await secondMember.save();
     console.log(`Chat with id:${newCreatedChat._id.toString()} created`);
     res.send(newCreatedChat._id);
-  } catch (err) {
+  } catch (err: any) {
     console.log(err);
-    next(err);
+    if (err.name === "DocumentNotFoundError") {
+      next(new NotFoundError(`Couldn't find document`));
+      return;
+    }
+    next(new InternalServerError("Server error"));
   }
 };
 
@@ -165,9 +187,19 @@ export const refreshChat = async (
     await currentUser?.save();
 
     res.send(chat);
-  } catch (error) {
-    console.error("Error refreshing chat:", error);
-    next(error);
+  } catch (err: any) {
+    console.error("Error refreshing chat:", err);
+    if (err.name === "DocumentNotFoundError") {
+      next(
+        new NotFoundError(`There's no document with id: ${req.params.chatId}`)
+      );
+      return;
+    }
+    if (err.name === "CastError") {
+      next(new BadRequestError(`Id '${req.params.chatId}' is invalid`));
+      return;
+    }
+    next(new InternalServerError("Server error"));
   }
 };
 
@@ -206,11 +238,7 @@ export const addMessage = async (
         $set: { lastMessage: newCreatedMessage._id },
       },
       { new: true }
-    );
-
-    if (updatedChat === null) {
-      throw new Error("Chat not found");
-    }
+    ).orFail();
 
     // Now we look for the chat members to update their new message info
     const memberPromises = updatedChat.members.map((member) => {
@@ -281,9 +309,13 @@ export const addMessage = async (
     });
 
     res.send(newCreatedMessage._id);
-  } catch (error) {
-    console.error("Error adding message:", error);
-    next(error);
+  } catch (err: any) {
+    console.error("Error adding message:", err);
+    if (err.name === "DocumentNotFoundError") {
+      next(new NotFoundError(`Couldn't find document`));
+      return;
+    }
+    next(new InternalServerError("Server error"));
   }
 };
 
@@ -292,20 +324,32 @@ export const deleteChat = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const req = reqOrig as ReqWithUserInfo;
   try {
-    const req = reqOrig as ReqWithUserInfo;
     const chatId = req.params.chatId as unknown as Types.ObjectId;
     console.log(`Deleteing chat with id ${chatId.toString()}`);
-    const result = await ChatModel.deleteOne({ _id: chatId });
+    const result = await ChatModel.deleteOne({ _id: chatId }).orFail().exec();
     console.log(result);
-    if (result.deletedCount === 1) {
-      console.log("Successfully deleted one document.");
-    } else {
-      console.log("No documents matched the query. Deleted 0 documents.");
-    }
+
+    console.log(
+      `Successfully deleted one document with id ${chatId.toString()}.`
+    );
+
     res.send(result);
-  } catch (error) {
-    console.error("Error adding message:", error);
-    next(error);
+  } catch (err: any) {
+    console.error(err.name);
+    if (err.name === "DocumentNotFoundError") {
+      next(new NotFoundError(`There's no chat with id: ${req.params.chatId}`));
+      return;
+    }
+    if (err.name === "CastError") {
+      next(new BadRequestError(`Id '${req.params.chatId}' is invalid`));
+      return;
+    }
+    if (err.name === "Error" && err.message === "Forbidden") {
+      next(new ForbiddenError("Unauthorized delete"));
+      return;
+    }
+    next(new InternalServerError("Server error"));
   }
 };

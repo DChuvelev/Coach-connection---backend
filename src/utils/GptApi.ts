@@ -1,6 +1,9 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI();
+const openai = new OpenAI({
+  organization: "org-VHPGPlGA2rsjVdQkSzfk42KD",
+  project: "proj_i3qXyXuhZjzNRw0k9IP1ykkk",
+});
 
 interface MessageContent {
   type: string;
@@ -18,6 +21,11 @@ export const communicateWithAssistant = async ({
   assistantId: string;
 }): Promise<string | undefined> => {
   const thread = await openai.beta.threads.create();
+
+  await openai.beta.threads.messages.create(thread.id, {
+    role: "user",
+    content: message,
+  });
 
   const run = await openai.beta.threads.runs.createAndPoll(thread.id, {
     assistant_id: assistantId,
